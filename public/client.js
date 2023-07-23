@@ -105,6 +105,23 @@ class AddPlayer {
       );
     }
   }
+  updatingPosition(updatedPos) {
+    if (this.player) {
+      let dir = new THREE.Vector3();
+      dir.subVectors(updatedPos, this.player.position).normalize();
+      this.rotationAngle = Math.atan2(dir.x, dir.z);
+      this.targetQuaternion.setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        this.rotationAngle
+      );
+      this.player.quaternion.slerp(this.targetQuaternion, this.rotationSpeed);
+      this.player.position.lerpVectors(
+        this.player.position,
+        updatedPos,
+        this.moveSpeed
+      );
+    }
+  }
 }
 
 const newEnv = new CreateScene();
@@ -199,20 +216,24 @@ socket.on("playerMoved", (data) => {
   if (data.id !== socket.id) {
     console.log(data.id, socket.id);
 
-    playersCurrState[data.id].inputHandling(
-      new THREE.Vector3(data.currDir.z, data.currDir.y, data.currDir.z)
+    playersCurrState[data.id].updatingPosition(
+      new THREE.Vector3(data.currPos.x, data.currPos.y, data.currPos.z)
     );
   }
 });
-socket.on("playerDisconnected", (data) => {
-  console.log(data);
+socket.on("playerDisconnected", (playerId) => {
+  const playerObj = playersCurrState[playerId];
+  if (playerObj) {
+    newEnv.newScene.remove(playerObj.player);
+    delete playersCurrState[playerId];
+  }
 });
-setInterval(() => {
-  socket.emit("updatePlayerState", {
-    direction: direction,
-    position: newPlayer.player.position,
-  });
-}, 50);
+// setInterval(() => {
+//   socket.emit("updatePlayerState", {
+//     direction: direction,
+//     position: newPlayer.player.position,
+//   });
+// }, 12);
 
 function update() {
   let Zstrength = keys["KeyW"] - keys["KeyS"];
@@ -221,6 +242,10 @@ function update() {
   if (newPlayer) {
     newPlayer.inputHandling(direction);
     TPcam.outerGroup.position.copy(newPlayer.player.position);
+    socket.emit("updatePlayerState", {
+      direction: direction,
+      position: newPlayer.player.position,
+    });
   }
   requestAnimationFrame(update);
   newEnv.renderer.render(newEnv.newScene, TPcam.camera);
